@@ -3,17 +3,40 @@
 #include <fstream>
 #include <sstream>
 #include <glm/glm.hpp>
+#include <glm/ext/matrix_transform.hpp>
 #include <vector>
-#include "color.h"
-#include "framebuffer.h"
-#include "triangle.h"
+
+const int SCREEN_WIDTH = 840;
+const int SCREEN_HEIGHT = 680;
+
+struct Color {
+    uint8_t r, g, b, a;
+};
 
 SDL_Window* window = nullptr;
 SDL_Renderer* renderer = nullptr;
-Color currentColor;
+Color currentColor = {255, 255, 255, 255};
+Color clearColor = {0, 0, 0, 255};
 
 std::vector<glm::vec3> vertices;
 std::vector<glm::ivec3> faces;
+
+float rotationAngle = 0.0f;
+
+void init() {
+    SDL_Init(SDL_INIT_VIDEO);
+    window = SDL_CreateWindow("SR 1 - Carga de modelos", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+}
+
+void setColor(const Color& color) {
+    currentColor = color;
+}
+
+void clear() {
+    SDL_SetRenderDrawColor(renderer, clearColor.r, clearColor.g, clearColor.b, clearColor.a);
+    SDL_RenderClear(renderer);
+}
 
 bool loadOBJ(const std::string& path) {
     std::ifstream file(path);
@@ -25,17 +48,26 @@ bool loadOBJ(const std::string& path) {
     std::string line;
     while (std::getline(file, line)) {
         std::istringstream iss(line);
-        std::string prefix;
-        iss >> prefix;
+        std::string type;
+        iss >> type;
 
-        if (prefix == "v") {
+        if (type == "v") {
             glm::vec3 vertex;
             iss >> vertex.x >> vertex.y >> vertex.z;
             vertices.push_back(vertex);
-        } else if (prefix == "f") {
+        } else if (type == "f") {
             glm::ivec3 face;
-            iss >> face.x >> face.y >> face.z;
-            faces.push_back(face - glm::ivec3(1));  // Los índices en OBJ comienzan en 1, no en 0
+            int idx;
+            int count = 0;
+            while (iss >> idx) {
+                if (count < 3) {
+                    face[count] = idx - 1;  // OBJ indices start at 1, not 0
+                }
+                count++;
+            }
+            if (count == 3) {
+                faces.push_back(face);
+            }
         }
     }
 
@@ -43,27 +75,41 @@ bool loadOBJ(const std::string& path) {
     return true;
 }
 
-void init() {
-    SDL_Init(SDL_INIT_VIDEO);
-    window = SDL_CreateWindow("Software Renderer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-}
+void drawTriangle(const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& v3) {
+    glm::mat4 rotation = glm::rotate(glm::mat4(0.9f), rotationAngle, glm::vec3(0.0f, 0.8f, 0.2f));
+    glm::vec4 v1_rotated = rotation * glm::vec4(v1, 1.0f);
+    glm::vec4 v2_rotated = rotation * glm::vec4(v2, 1.0f);
+    glm::vec4 v3_rotated = rotation * glm::vec4(v3, 1.0f);
 
-void setColor(const Color& color) {
-    currentColor = color;
+    float scale = -0.05;
+    glm::vec3 translation(0, 0, 0);
+    glm::vec3 v1_transformed = glm::vec3(v1_rotated) * scale + translation;
+    glm::vec3 v2_transformed = glm::vec3(v2_rotated) * scale + translation;
+    glm::vec3 v3_transformed = glm::vec3(v3_rotated) * scale + translation;
+
+    int x1 = (v1_transformed.x + 1) * SCREEN_WIDTH / 2;
+    int y1 = (v1_transformed.y + 1) * SCREEN_HEIGHT / 2;
+    int x2 = (v2_transformed.x + 1) * SCREEN_WIDTH / 2;
+    int y2 = (v2_transformed.y + 1) * SCREEN_HEIGHT / 2;
+    int x3 = (v3_transformed.x + 1) * SCREEN_WIDTH / 2;
+    int y3 = (v3_transformed.y + 1) * SCREEN_HEIGHT / 2;
+
+    SDL_SetRenderDrawColor(renderer, currentColor.r, currentColor.g, currentColor.b, currentColor.a);
+    SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+    SDL_RenderDrawLine(renderer, x2, y2, x3, y3);
+    SDL_RenderDrawLine(renderer, x3, y3, x1, y1);
 }
 
 void render() {
     for (const auto& face : faces) {
-        Triangle triangle(vertices[face.x], vertices[face.y], vertices[face.z], currentColor);
-        triangle.draw(renderer);
+        drawTriangle(vertices[face.x], vertices[face.y], vertices[face.z]);
     }
 }
 
 int main(int argc, char* argv[]) {
     init();
 
-    if (!loadOBJ("path_to_your_model.obj")) {  // Cambie esto por la ruta de su modelo
+    if (!loadOBJ("/Users/josue/Library/CloudStorage/OneDrive-Personal/Documents/UVG/SEXTO SEMESTRE/GRAFICAS/GRAPHICS/spaceship.obj")) {
         return -1;
     }
 
@@ -76,12 +122,10 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        clear(); 
-
-        setColor(Color(255, 255, 0));  // pueden cambiar los colores
+        clear();
+        rotationAngle += 0.01f;
         render();
-
-        renderBuffer(renderer);
+        SDL_RenderPresent(renderer);
     }
 
     SDL_DestroyRenderer(renderer);
