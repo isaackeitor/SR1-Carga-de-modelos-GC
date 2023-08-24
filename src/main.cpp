@@ -15,8 +15,8 @@ struct Color {
 
 SDL_Window* window = nullptr;
 SDL_Renderer* renderer = nullptr;
-Color currentColor = {255, 255, 255, 255};
-Color clearColor = {0, 0, 0, 255};
+Color currentColor = {0, 0, 0, 255};
+Color clearColor = {255, 255, 255, 255};
 
 std::vector<glm::vec3> vertices;
 std::vector<glm::ivec3> faces;
@@ -112,6 +112,8 @@ int main(int argc, char* argv[]) {
     if (!loadOBJ("/Users/josue/Library/CloudStorage/OneDrive-Personal/Documents/UVG/SEXTO SEMESTRE/GRAFICAS/GRAPHICS/spaceship.obj")) {
         return -1;
     }
+    
+    std::cout << "Loaded " << vertices.size() << " vertices and " << faces.size() << " faces." << std::endl;
 
     bool running = true;
     while (running) {
