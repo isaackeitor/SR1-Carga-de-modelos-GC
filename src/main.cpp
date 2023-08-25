@@ -1,27 +1,37 @@
-#include <SDL2/SDL.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <glm/vec3.hpp>
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_transform.hpp>
-#include <vector>
+#include <SDL.h>
+#include <ctime>
 
+struct Color {
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+    uint8_t a;
+};
+
+struct Face {
+    std::vector<int> vertexIndices;
+};
+
+SDL_Window *window = nullptr;
+SDL_Renderer *renderer = nullptr;
 const int SCREEN_WIDTH = 840;
 const int SCREEN_HEIGHT = 680;
 
-struct Color {
-    uint8_t r, g, b, a;
-};
-
-SDL_Window* window = nullptr;
-SDL_Renderer* renderer = nullptr;
 Color currentColor = {0, 0, 0, 255};
 Color clearColor = {255, 255, 255, 255};
 
 std::vector<glm::vec3> vertices;
-std::vector<glm::ivec3> faces;
-
+std::vector<Face> faces;
+std::vector<glm::vec3> modelVertices;
 float rotationAngle = 0.0f;
+
+void drawTriangle(const glm::vec3 &v1, const glm::vec3 &v2, const glm::vec3 &v3);
 
 void init() {
     SDL_Init(SDL_INIT_VIDEO);
@@ -29,19 +39,20 @@ void init() {
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 }
 
-void setColor(const Color& color) {
-    currentColor = color;
-}
-
 void clear() {
     SDL_SetRenderDrawColor(renderer, clearColor.r, clearColor.g, clearColor.b, clearColor.a);
     SDL_RenderClear(renderer);
 }
 
-bool loadOBJ(const std::string& path) {
+void render() {
+    for (size_t i = 0; i < modelVertices.size(); i += 3) {
+        drawTriangle(modelVertices[i], modelVertices[i + 1], modelVertices[i + 2]);
+    }
+}
+
+bool loadOBJ(const std::string &path, std::vector<glm::vec3> &out_vertices, std::vector<Face> &out_faces) {
     std::ifstream file(path);
     if (!file.is_open()) {
-        std::cerr << "Failed to open the OBJ file!" << std::endl;
         return false;
     }
 
@@ -54,35 +65,48 @@ bool loadOBJ(const std::string& path) {
         if (type == "v") {
             glm::vec3 vertex;
             iss >> vertex.x >> vertex.y >> vertex.z;
-            vertices.push_back(vertex);
+            out_vertices.push_back(vertex);
         } else if (type == "f") {
-            glm::ivec3 face;
-            int idx;
-            int count = 0;
-            while (iss >> idx) {
-                if (count < 3) {
-                    face[count] = idx - 1;  // OBJ indices start at 1, not 0
-                }
-                count++;
+            Face face;
+            std::string vertexIndexStr;
+            while (iss >> vertexIndexStr) {
+                std::istringstream vertexIndexStream(vertexIndexStr);
+                int vertexIndex;
+                vertexIndexStream >> vertexIndex;
+                --vertexIndex;
+                face.vertexIndices.push_back(vertexIndex);
             }
-            if (count == 3) {
-                faces.push_back(face);
-            }
+            out_faces.push_back(face);
         }
     }
 
-    file.close();
     return true;
 }
 
-void drawTriangle(const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& v3) {
-    glm::mat4 rotation = glm::rotate(glm::mat4(0.9f), rotationAngle, glm::vec3(0.0f, 0.8f, 0.2f));
+std::vector<glm::vec3> setupVertexArray(const std::vector<glm::vec3> &vertices, const std::vector<Face> &faces) {
+    std::vector<glm::vec3> vertexArray;
+
+    for (const auto &face : faces) {
+        glm::vec3 firstVertex = vertices[face.vertexIndices[0]];
+        for (size_t i = 2; i < face.vertexIndices.size(); i++) {
+            vertexArray.push_back(firstVertex);
+            vertexArray.push_back(vertices[face.vertexIndices[i - 1]]);
+            vertexArray.push_back(vertices[face.vertexIndices[i]]);
+        }
+    }
+
+    return vertexArray;
+}
+
+void drawTriangle(const glm::vec3 &v1, const glm::vec3 &v2, const glm::vec3 &v3) {
+    glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0.0f, 0.8f, 0.2f));
     glm::vec4 v1_rotated = rotation * glm::vec4(v1, 1.0f);
     glm::vec4 v2_rotated = rotation * glm::vec4(v2, 1.0f);
     glm::vec4 v3_rotated = rotation * glm::vec4(v3, 1.0f);
 
-    float scale = -0.05;
-    glm::vec3 translation(0, 0, 0);
+    float scale = 0.05;             
+    glm::vec3 translation(sin(rotationAngle) * 0.5, 0, 0); 
+
     glm::vec3 v1_transformed = glm::vec3(v1_rotated) * scale + translation;
     glm::vec3 v2_transformed = glm::vec3(v2_rotated) * scale + translation;
     glm::vec3 v3_transformed = glm::vec3(v3_rotated) * scale + translation;
@@ -95,27 +119,26 @@ void drawTriangle(const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& v3)
     int y3 = (v3_transformed.y + 1) * SCREEN_HEIGHT / 2;
 
     SDL_SetRenderDrawColor(renderer, currentColor.r, currentColor.g, currentColor.b, currentColor.a);
+
     SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
     SDL_RenderDrawLine(renderer, x2, y2, x3, y3);
     SDL_RenderDrawLine(renderer, x3, y3, x1, y1);
 }
 
-void render() {
-    for (const auto& face : faces) {
-        drawTriangle(vertices[face.x], vertices[face.y], vertices[face.z]);
-    }
-}
-
-int main(int argc, char* argv[]) {
+int main(int argc, char **argv) {
     init();
 
-    if (!loadOBJ("/Users/josue/Library/CloudStorage/OneDrive-Personal/Documents/UVG/SEXTO SEMESTRE/GRAFICAS/GRAPHICS/spaceship.obj")) {
-        return -1;
+    if (!loadOBJ("/Users/josue/Library/CloudStorage/OneDrive-Personal/Documents/UVG/SEXTO SEMESTRE/GRAFICAS/GRAPHICS/spaceship.obj", vertices, faces)) {
+        std::cerr << "Failed to load model" << std::endl;
+        return 1;
     }
-    
-    std::cout << "Loaded " << vertices.size() << " vertices and " << faces.size() << " faces." << std::endl;
+
+
+    modelVertices = setupVertexArray(vertices, faces);
 
     bool running = true;
+    clear();
+
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -125,7 +148,7 @@ int main(int argc, char* argv[]) {
         }
 
         clear();
-        rotationAngle += 0.01f;
+        rotationAngle += 0.0005f;
         render();
         SDL_RenderPresent(renderer);
     }
@@ -133,6 +156,5 @@ int main(int argc, char* argv[]) {
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-
     return 0;
 }
