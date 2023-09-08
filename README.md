@@ -2,4 +2,4 @@
 
 ## Render
 
-![GIF](nave.gif)
+![GIF](resultado/nave.gif)
